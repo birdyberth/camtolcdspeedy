@@ -232,7 +232,7 @@ end D5M_clock;
 -- architecture
 architecture myD5M_clock of D5M_clock is
 begin
-	D5M_XCLKIN <= CLOCK_50; -- put 50Mhz clock on the clock input of the camera
+	D5M_XCLKIN <= CLOCK_50;
 end myD5M_clock;
 
 ---------------------------------
@@ -279,6 +279,7 @@ architecture my_datafeeder of datafeeder is
 	x"04" & x"09FF", --Column size, 320*8 -1 = 2559
 	x"22" & x"0003", --Row address mode, bin1, skip4, skip 4 pour une image de 640x480 en pattern bayer
 	x"23" & x"0003", --Column address mode, bin1, skip4, le bin rajoute du flou en déplacement
+	x"09" & x"01DF", --Shutter width, 480-1=479
 	x"0B" & x"0001");--Restart, clear pause_restart bit
 	signal Index : integer range 0 to Commands'length; -- Index of the command set
 	signal Cmd : Cmd_t;
@@ -421,7 +422,7 @@ begin
 	pixel_latch: process(D5M_PIXCLK,D5M_LVAL,D5M_FVAL) -- latch pixel data
 	begin
 		if (falling_edge(D5M_PIXCLK) and (D5M_LVAL = '1') and (D5M_FVAL = '1')) then -- read pixel data when it's valid
-			pixel_out <= D5M_Di(8 downto 4);
+			pixel_out <= D5M_Di(6 downto 2);
 		end if;
 	end process pixel_latch;
 	
@@ -520,9 +521,9 @@ begin
 	pixclckgen : process(D5M_PIXCLK,Xposchosen,Yposchosen) -- generates a clock at the pixel_out rate
 	begin
 		if (rising_edge(D5M_PIXCLK) and (Xposchosen < 1) and (Yposchosen = 1)) then
-			newpixclk_out <= '0';
-		elsif (rising_edge(D5M_PIXCLK) and (Xposchosen >= 1) and (Yposchosen = 1)) then
 			newpixclk_out <= '1';
+		elsif (rising_edge(D5M_PIXCLK) and (Xposchosen >= 1) and (Yposchosen = 1)) then
+			newpixclk_out <= '0';
 		end if;
 	end process pixclckgen;
 end my_image_transform;
@@ -581,7 +582,9 @@ architecture my_lcdctrl of lcd_controller is
 	x"000" & '1' & x"0000",
 	x"000" & '1' & x"0000",
 	x"000" & '1' & x"00EF", -- Put max page into max column, because of row/col inversion
-	
+	x"000" & '0' & x"00B1", -- Frame rate control
+	x"000" & '1' & x"0000",
+	x"000" & '1' & x"0014", -- 95 Hz frame rate (Maximum value before loss of contrast due to lcd optical response time)
 	x"000" & '0' & x"00F2", -- Enable 3G register
 	x"000" & '1' & x"0000", -- non-default = disable 3 gamma -- à voir plus tard si je veux une correction gamma ou pas, pour l'instant on va laisser ça comme ça
 	x"000" & '0' & x"002C"); -- Memory Write
@@ -712,7 +715,7 @@ begin
 					
 				when CamLiveFeed =>
 					LT_DBi <= pixImage_in; -- Write pixel to LCD data port
-					LT_WR_n <= not newpixclk_in; -- toggle write pin with pixel clock (pour une raison obscure, il y a un délai quelque part, donc il faut rajouter not pour que les pixels s'écrivent au bon moment
+					LT_WR_n <= newpixclk_in; -- toggle write pin with pixel clock (pour une raison obscure, il y a un délai quelque part, donc il faut rajouter not pour que les pixels s'écrivent au bon moment
 					State <= CamLiveFeed; -- deadlock
 	 
 			end case;
